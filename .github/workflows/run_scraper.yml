@@ -30,6 +30,7 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@://github.com"
-        git add playlist.m3u
-        git commit -m "🔄 Auto-updated playlist.m3u" || echo "No changes to commit"
+        git add match_page_text.txt
+        git commit -m "🔄 Update match page visible text" || echo "No changes to commit"
         git push
+
