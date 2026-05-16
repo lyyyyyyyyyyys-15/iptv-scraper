@@ -83,5 +83,5 @@ def verify_match_page_text(main_url):
 
 if __name__ == "__main__":
     # استبدل هذا برابط الموقع الذي تريد اختباره
-    TARGET_SITE = "https://yalla-shoot.com" 
+    TARGET_SITE = "https://www.yallaschool.live/" 
     verify_match_page_text(TARGET_SITE)
