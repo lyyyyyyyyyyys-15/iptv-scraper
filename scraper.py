@@ -1,48 +1,87 @@
 import time
-import json
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
-def extract_m3u8_links(target_url):
+def verify_match_page_text(main_url):
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new") # تشغيل مخفي تماماً يناسب السيرفر
+    chrome_options.add_argument("--headless=new") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.set_capability("goog:loggingDims", {"performance": "ALL"})
-    chrome_options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
-    print(f"🔄 Navigating to: {target_url}")
-    driver.get(target_url)
-    time.sleep(12) # وقت كافٍ لتحميل مشغل الفيديو والروابط
+    try:
+        print(f"🔄 1. جاري الدخول إلى الصفحة الرئيسية: {main_url}")
+        driver.get(main_url)
+        time.sleep(5) 
 
-    logs = driver.get_log("performance")
-    m3u8_urls = set()
+        main_window = driver.current_window_handle
 
-    for entry in logs:
-        log = json.loads(entry["message"])["message"]
-        if "Network.requestWillBeSent" in log["method"]:
-            request_url = log["params"]["request"]["url"]
-            if ".m3u8" in request_url:
-                m3u8_urls.add(request_url)
+        print("🔍 2. جاري البحث عن أول رابط مباراة متاح...")
+        # استخراج جميع الروابط في الصفحة
+        all_links = driver.find_elements(By.TAG_NAME, "a")
+        target_match_url = None
 
-    driver.quit()
-    return list(m3u8_urls)
+        for elem in all_links:
+            href = elem.get_attribute("href")
+            # تصفية الروابط لضمان اختيار رابط مباراة داخلي (يحتوي عادة على match أو id)
+            if href and main_url in href and href != main_url and ("match" in href or "live" in href or "go" in href):
+                target_match_url = href
+                break
 
-def save_to_m3u(urls, filename="playlist.m3u"):
-    with open(filename, "w", encoding="utf-8") as file:
-        file.write("#EXTM3U\n")
-        for i, url in enumerate(urls, start=1):
-            file.write(f"#EXTINF:-1, Channel {i}\n")
-            file.write(f"{url}\n")
-    print(f"✅ Saved {len(urls)} links to {filename}")
+        # إذا لم يجد رابط مخصص، سيأخذ أول رابط مختلف عن الصفحة الرئيسية كخطة بديلة
+        if not target_match_url:
+            for elem in all_links:
+                href = elem.get_attribute("href")
+                if href and main_url in href and href != main_url:
+                    target_match_url = href
+                    break
+
+        if not target_match_url:
+            print("❌ لم يتم العثور على أي روابط للانتقال إليها.")
+            driver.quit()
+            return
+
+        print(f"🎯 الرابط الذي سيتم دخوله وفحصه: {target_match_url}")
+
+        print("🔄 3. جاري الانتقال إلى الصفحة والتعامل مع النوافذ الإعلانية...")
+        driver.get(target_match_url)
+        time.sleep(8) # وقت كافٍ لتحميل النصوص وإغلاق الإعلانات الخلفية
+
+        # إغلاق النوافذ الإعلانية المنبثقة إن وجدت لضمان ثبات المتصفح
+        all_windows = driver.window_handles
+        if len(all_windows) > 1:
+            print(f"⚠️ تم رصد وإغلاق {len(all_windows) - 1} نافذة إعلانية منبثقة.")
+            for window in all_windows:
+                if window != main_window:
+                    driver.switch_to.window(window)
+                    driver.close()
+            driver.switch_to.window(main_window)
+
+        print("📝 4. جاري استخراج النصوص الظاهرة في الصفحة وحفظها...")
+        # سحب النص المقروء بالكامل من جسم الصفحة (Body)
+        visible_text = driver.find_element(By.TAG_NAME, "body").text
+
+        # حفظ النصوص المستخرجة في ملف txt
+        with open("match_page_text.txt", "w", encoding="utf-8") as file:
+            file.write(f"--- معلومات الفحص ---\n")
+            file.write(f"رابط الصفحة المستهدفة: {target_match_url}\n")
+            file.write(f"تاريخ ووقت الفحص: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            file.write(f"-----------------------\n\n")
+            file.write(visible_text)
+        
+        print("✅ تم حفظ محتوى الصفحة النصي بنجاح في ملف: match_page_text.txt")
+
+    except Exception as e:
+        print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
+    finally:
+        driver.quit()
 
 if __name__ == "__main__":
-    # ضع هنا رابط موقع البث المستهدف
-    SITE_URL = "https://example-streaming-site.com" 
-    
-    found_links = extract_m3u8_links(SITE_URL)
-    save_to_m3u(found_links)
+    # استبدل هذا برابط الموقع الذي تريد اختباره
+    TARGET_SITE = "https://yalla-shoot.com" 
+    verify_match_page_text(TARGET_SITE)
